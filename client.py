@@ -88,6 +88,12 @@ class SquareletClient:
         # pylint: disable=method-hidden
         logger.info("request: %s - %s - %s", method, url, kwargs)
 
+        # Add custom headers or other kwargs using the set_request_kwargs method
+        custom_kwargs = self.set_request_kwargs(**kwargs)
+
+        # Merge custom kwargs (headers, etc.) with the default kwargs
+        kwargs.update(custom_kwargs)
+
         # Track if we should set tokens in case of 403/429 response
         set_tokens = kwargs.pop("set_tokens", True)
         full_url = kwargs.pop("full_url", False)
@@ -114,7 +120,7 @@ class SquareletClient:
 
     def set_request_kwargs(self, **kwargs):
         """Allow clients to customize request kwargs (e.g., adding headers)"""
-        return kwargs
+        return {}
 
     def __getattr__(self, attr):
         """Generate methods for each HTTP request type (GET, POST, etc.)"""
