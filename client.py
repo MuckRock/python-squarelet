@@ -5,6 +5,7 @@ import logging
 from functools import partial
 
 # Third Party
+import ratelimit
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -25,14 +26,34 @@ DEFAULT_AUTH_URI = "https://accounts.muckrock.com/api/"
 class SquareletClient:
     """Handles token auth and requests"""
 
-    def __init__(self, base_uri, auth_uri=None, session=None, timeout=TIMEOUT):
+    def __init__(
+        self,
+        base_uri,
+        username=None,
+        password=None,
+        auth_uri=None,
+        timeout=TIMEOUT,
+        rate_limit=True,
+        rate_limit_sleep=True,
+    ):
+        self.username = username
+        self.password = password
         self.base_uri = base_uri
         self.auth_uri = auth_uri or DEFAULT_AUTH_URI
         self.timeout = timeout
-        self.session = session
+        self.session = requests.Session()
         self.access_token = None
         self.refresh_token = None
         self._set_tokens()
+
+        # Apply rate limiting
+        if rate_limit:
+            # Apply rate limit decorator
+            self._request = ratelimit.limits(calls=RATE_LIMIT, period=RATE_PERIOD)(self._request)
+
+            # Apply sleep_and_retry if rate_limit_sleep is enabled
+            if rate_limit_sleep:
+                self._request = ratelimit.sleep_and_retry(self._request)
 
     def _set_tokens(self):
         """Set the refresh and access tokens"""
