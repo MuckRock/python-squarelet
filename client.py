@@ -1,0 +1,138 @@
+""" python-squarelet handles authentication and requests to MuckRock services """
+
+# Standard Library
+import logging
+from functools import partial
+
+# Third Party
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Local
+from .exceptions import APIError, CredentialsFailedError, DoesNotExistError
+
+logger = logging.getLogger("squarelet")
+
+BULK_LIMIT = 25
+TIMEOUT = 20
+RATE_LIMIT = 10
+RATE_PERIOD = 1
+
+DEFAULT_AUTH_URI = "https://accounts.muckrock.com/api/"
+
+
+class SquareletClient:
+    """Handles token auth and requests"""
+
+    def __init__(self, base_uri, auth_uri=None, session=None, timeout=TIMEOUT):
+        self.base_uri = base_uri
+        self.auth_uri = auth_uri or DEFAULT_AUTH_URI
+        self.timeout = timeout
+        self.session = session
+        self.access_token = None
+        self.refresh_token = None
+        self._set_tokens()
+
+    def _set_tokens(self):
+        """Set the refresh and access tokens"""
+        if self.refresh_token:
+            self.access_token, self.refresh_token = self._refresh_tokens(self.refresh_token)
+        elif self.access_token:
+            pass  # Already have access token, do nothing
+        else:
+            raise ValueError("No tokens found")
+
+        if self.access_token:
+            self.session.headers.update(
+                {"Authorization": f"Bearer {self.access_token}"}
+            )
+
+    def _get_tokens(self, username, password):
+        """Get an access and refresh token in exchange for the username and password"""
+        response = self._post(
+            f"{self.auth_uri}/token/", json={"username": username, "password": password}
+        )
+        return response["access"], response["refresh"]
+
+    def _refresh_tokens(self, refresh_token):
+        """Refresh the access and refresh tokens"""
+        response = self._post(
+            f"{self.auth_uri}/refresh/", json={"refresh": refresh_token}
+        )
+        return response["access"], response["refresh"]
+
+    def _request(self, method, url, raise_error=True, **kwargs):
+        """Generic method to make API requests"""
+        # pylint: disable=method-hidden
+        logger.info("request: %s - %s - %s", method, url, kwargs)
+
+        # Track if we should set tokens in case of 403/429 response
+        set_tokens = kwargs.pop("set_tokens", True)
+        full_url = kwargs.pop("full_url", False)
+
+        if not full_url:
+            url = f"{self.base_uri}{url}"
+
+        response = self.request_or_retry_session(session=self.session).request(
+            method, url, timeout=self.timeout, **kwargs
+        )
+        logger.debug("response: %s - %s", response.status_code, response.content)
+
+        if response.status_code in [403, 429] and set_tokens:
+            self._set_tokens()  # Refresh tokens
+            kwargs["set_tokens"] = False  # Prevent infinite loop
+            return self._request(
+                method, url, full_url=True, **kwargs
+            )  # Retry the request
+
+        if raise_error:
+            self.raise_for_status(response)
+
+        return response
+
+    def set_request_kwargs(self, **kwargs):
+        """Allow clients to customize request kwargs (e.g., adding headers)"""
+        return kwargs
+
+    def __getattr__(self, attr):
+        """Generate methods for each HTTP request type (GET, POST, etc.)"""
+        methods = ["get", "post", "put", "delete", "patch", "head", "options"]
+        if attr in methods:
+            return partial(self._request, attr)
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{attr}'"
+        )
+
+    def requests_retry_session(
+        self,
+        retries=3,
+        backoff_factor=0.3,
+        status_forcelist=(500, 502, 504),
+        session=None,
+    ):
+        """Automatic retries for HTTP requests"""
+
+        session = session or requests.Session()
+        retry = Retry(
+            total=retries,
+            read=retries,
+            connect=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=status_forcelist,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
+
+    def raise_for_status(self, response):
+        """Raise for status with a custom error class"""
+        try:
+            response.raise_for_status()
+        except requests.exceptions.RequestException as exc:
+            if exc.response.status_code == 404:
+                raise DoesNotExistError(response=exc.response) from exc
+            if exc.response.status_code == 401:
+                raise CredentialsFailedError(response=exc.response) from exc
+            raise APIError(response=exc.response) from exc
