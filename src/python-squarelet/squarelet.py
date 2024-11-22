@@ -22,10 +22,10 @@ RATE_PERIOD = 1
 
 DEFAULT_AUTH_URI = "https://accounts.muckrock.com/api/"
 
-
+# pylint: disable=too-many-instance-attributes
 class SquareletClient:
     """Handles token auth and requests"""
-
+    # pylint: disable=too-many-arguments, too-many-positional-arguments
     def __init__(
         self,
         base_uri,
@@ -118,9 +118,15 @@ class SquareletClient:
 
         return response
 
-    def set_request_kwargs(self, **kwargs):
+    def set_request_kwargs(self):
         """Allow clients to customize request kwargs (e.g., adding headers)"""
-        return {}
+        custom_kwargs = {}
+
+        # If base_uri is DocumentCloud, return version info
+        if self.base_uri == "https://api.www.documentcloud.org/api/":
+            custom_kwargs["version"] = "2.0"
+
+        return custom_kwargs
 
     def __getattr__(self, attr):
         """Generate methods for each HTTP request type (GET, POST, etc.)"""
