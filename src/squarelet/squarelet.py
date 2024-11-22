@@ -60,7 +60,7 @@ class SquareletClient:
         if self.refresh_token:
             self.access_token, self.refresh_token = self._refresh_tokens(self.refresh_token)
         elif self.username and self.password:
-            access_token, self.refresh_token = self._get_tokens(
+            self.access_token, self.refresh_token = self._get_tokens(
                 self.username, self.password
             )
         elif self.access_token:
@@ -81,7 +81,7 @@ class SquareletClient:
             timeout=self.timeout,
         )
 
-        if response.status_code == requests.codes.UNAUTHORIZED:
+        if response.status_code == '401':
             raise CredentialsFailedError("The username and password are incorrect")
 
         self.raise_for_status(response)
@@ -92,7 +92,7 @@ class SquareletClient:
 
     def _refresh_tokens(self, refresh_token):
         """Refresh the access and refresh tokens"""
-        response = self.requests_retry_session.post(
+        response = self.requests_retry_session().post(
             f"{self.auth_uri}/refresh/", json={"refresh": refresh_token}
         )
         return response["access"], response["refresh"]
@@ -115,7 +115,7 @@ class SquareletClient:
         if not full_url:
             url = f"{self.base_uri}{url}"
 
-        response = self.request_or_retry_session(session=self.session).request(
+        response = self.requests_retry_session(session=self.session).request(
             method, url, timeout=self.timeout, **kwargs
         )
         logger.debug("response: %s - %s", response.status_code, response.content)
@@ -132,15 +132,27 @@ class SquareletClient:
 
         return response
 
-    def set_request_kwargs(self):
-        """Allow clients to customize request kwargs (e.g., adding headers)"""
-        custom_kwargs = {}
+    def set_request_kwargs(self, **kwargs):
+        """Allow clients to customize request kwargs (e.g., adding headers or versioning)"""
+        custom_kwargs = {
+            "params": kwargs.get("params", {}),
+            "headers": kwargs.get("headers", {})
+        }
 
-        # If base_uri is DocumentCloud, return version info
+        # If the base_uri matches a specific service, add the versioning parameter
         if self.base_uri == "https://api.www.documentcloud.org/api/":
-            custom_kwargs["version"] = "2.0"
+            custom_kwargs["params"]["version"] = "2.0"
+
+        # Allow users to add custom params or headers by passing additional kwargs
+        # Merge user-provided arguments with the defaults in custom_kwargs
+        if "params" in kwargs:
+            custom_kwargs["params"].update(kwargs["params"])  # Merge user-specified params
+
+        if "headers" in kwargs:
+            custom_kwargs["headers"].update(kwargs["headers"])  # Add user-specified headers
 
         return custom_kwargs
+
 
     def __getattr__(self, attr):
         """Generate methods for each HTTP request type (GET, POST, etc.)"""
