@@ -30,7 +30,6 @@ print(my_user.text)
 ```
 
 Generally, it is safer to access your username as local environment variables using [os.environ](https://docs.python.org/3/library/os.html#os.environ) instead of specifying your username and password as strings, especially if publishing this code anywhere. After setting your local environment variables SQ_USERNAME and SQ_PASSWORD with your credentials, you can access them like so. 
-
 ```python
 username = os.environ["SQ_USERNAME"]
 password = os.environ["SQ_PASSWORD"]
