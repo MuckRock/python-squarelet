@@ -11,7 +11,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # Local
-from exceptions import APIError, CredentialsFailedError, DoesNotExistError
+from .exceptions import APIError, CredentialsFailedError, DoesNotExistError
 
 logger = logging.getLogger("squarelet")
 
@@ -59,6 +59,10 @@ class SquareletClient:
         """Set the refresh and access tokens"""
         if self.refresh_token:
             self.access_token, self.refresh_token = self._refresh_tokens(self.refresh_token)
+        elif self.username and self.password:
+            access_token, self.refresh_token = self._get_tokens(
+                self.username, self.password
+            )
         elif self.access_token:
             pass  # Already have access token, do nothing
         else:
@@ -71,14 +75,24 @@ class SquareletClient:
 
     def _get_tokens(self, username, password):
         """Get an access and refresh token in exchange for the username and password"""
-        response = self._post(
-            f"{self.auth_uri}/token/", json={"username": username, "password": password}
+        response = self.requests_retry_session().post(
+            f"{self.auth_uri}token/",
+            json={"username": username, "password": password},
+            timeout=self.timeout,
         )
-        return response["access"], response["refresh"]
+
+        if response.status_code == requests.codes.UNAUTHORIZED:
+            raise CredentialsFailedError("The username and password are incorrect")
+
+        self.raise_for_status(response)
+
+        json = response.json()
+        return (json["access"], json["refresh"])
+
 
     def _refresh_tokens(self, refresh_token):
         """Refresh the access and refresh tokens"""
-        response = self._post(
+        response = self.requests_retry_session.post(
             f"{self.auth_uri}/refresh/", json={"refresh": refresh_token}
         )
         return response["access"], response["refresh"]
