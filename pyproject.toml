@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "python-squarelet"
-version = "0.0.2"
+version = "0.0.3"
 authors = [
   { name="duckduckgrayduck", email="sanjin@muckrock.com" },
 ]
@@ -27,4 +27,4 @@ dependencies = [
 "Bug Tracker" = "https://github.com/MuckRock/python-squarelet/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/python-squarelet"]
+packages = ["src/squarelet"]
