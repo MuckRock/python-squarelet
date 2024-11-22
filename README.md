@@ -21,7 +21,12 @@ $ pip install python-squarelet
 # If you intend on accessing MuckRock requests, the base_uri would be https://www.muckrock.com/api_v1/ or https://www.muckrock.com/api_v2/
 base_uri="https://api.www.documentcloud.org/api/"
 from squarelet import SquareletClient
+# Authenticating with Squarelet using your credentials
 client = SquareletClient(base_uri=base_uri, username="your_username", password="your_password")
+# Example API call that gets data about your DocumentCloud account.
+my_user = client._request("get", "users/me/")
+# Print the response data about your DocumentCloud account. 
+print(my_user.text) 
 ```
 
 Generally, it is safer to access your username as local environment variables using [os.environ](https://docs.python.org/3/library/os.html#os.environ) instead of specifying your username and password as strings, especially if publishing this code anywhere. After setting your local environment variables SQ_USERNAME and SQ_PASSWORD with your credentials, you can access them like so. 
