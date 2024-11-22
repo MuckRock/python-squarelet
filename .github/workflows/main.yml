@@ -28,8 +28,8 @@ jobs:
 
     - name: Run Pylint on squarelet.py
       run: |
-        pylint squarelet.py
+        pylint src/squarelet/squarelet.py
 
     - name: Run Black on squarelet.py
       run: |
-        black squarelet.py
+        black src/squarelet/squarelet.py
