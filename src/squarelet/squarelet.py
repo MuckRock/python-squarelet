@@ -22,9 +22,11 @@ RATE_PERIOD = 1
 
 DEFAULT_AUTH_URI = "https://accounts.muckrock.com/api/"
 
+
 # pylint: disable=too-many-instance-attributes
 class SquareletClient:
     """Handles token auth and requests"""
+
     # pylint: disable=too-many-arguments, too-many-positional-arguments
     def __init__(
         self,
@@ -49,7 +51,9 @@ class SquareletClient:
         # Apply rate limiting
         if rate_limit:
             # Apply rate limit decorator
-            self._request = ratelimit.limits(calls=RATE_LIMIT, period=RATE_PERIOD)(self._request)
+            self._request = ratelimit.limits(calls=RATE_LIMIT, period=RATE_PERIOD)(
+                self._request
+            )
 
             # Apply sleep_and_retry if rate_limit_sleep is enabled
             if rate_limit_sleep:
@@ -58,7 +62,9 @@ class SquareletClient:
     def _set_tokens(self):
         """Set the refresh and access tokens"""
         if self.refresh_token:
-            self.access_token, self.refresh_token = self._refresh_tokens(self.refresh_token)
+            self.access_token, self.refresh_token = self._refresh_tokens(
+                self.refresh_token
+            )
         elif self.username and self.password:
             self.access_token, self.refresh_token = self._get_tokens(
                 self.username, self.password
@@ -81,14 +87,13 @@ class SquareletClient:
             timeout=self.timeout,
         )
 
-        if response.status_code == '401':
+        if response.status_code == "401":
             raise CredentialsFailedError("The username and password are incorrect")
 
         self.raise_for_status(response)
 
         json = response.json()
         return (json["access"], json["refresh"])
-
 
     def _refresh_tokens(self, refresh_token):
         """Refresh the access and refresh tokens"""
@@ -136,7 +141,7 @@ class SquareletClient:
         """Allow clients to customize request kwargs (e.g., adding headers or versioning)"""
         custom_kwargs = {
             "params": kwargs.get("params", {}),
-            "headers": kwargs.get("headers", {})
+            "headers": kwargs.get("headers", {}),
         }
 
         # If the base_uri matches a specific service, add the versioning parameter
@@ -146,13 +151,16 @@ class SquareletClient:
         # Allow users to add custom params or headers by passing additional kwargs
         # Merge user-provided arguments with the defaults in custom_kwargs
         if "params" in kwargs:
-            custom_kwargs["params"].update(kwargs["params"])  # Merge user-specified params
+            custom_kwargs["params"].update(
+                kwargs["params"]
+            )  # Merge user-specified params
 
         if "headers" in kwargs:
-            custom_kwargs["headers"].update(kwargs["headers"])  # Add user-specified headers
+            custom_kwargs["headers"].update(
+                kwargs["headers"]
+            )  # Add user-specified headers
 
         return custom_kwargs
-
 
     def __getattr__(self, attr):
         """Generate methods for each HTTP request type (GET, POST, etc.)"""
