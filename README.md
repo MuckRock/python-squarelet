@@ -24,7 +24,7 @@ from squarelet import SquareletClient
 # Authenticating with Squarelet using your credentials
 client = SquareletClient(base_uri=base_uri, username="your_username", password="your_password")
 # Example API call that gets data about your DocumentCloud account.
-my_user = client._request("get", "users/me/")
+my_user = client.request("get", "users/me/")
 # Print the response data about your DocumentCloud account. 
 print(my_user.text) 
 ```

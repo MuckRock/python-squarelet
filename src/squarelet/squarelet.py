@@ -51,13 +51,13 @@ class SquareletClient:
         # Apply rate limiting
         if rate_limit:
             # Apply rate limit decorator
-            self._request = ratelimit.limits(calls=RATE_LIMIT, period=RATE_PERIOD)(
-                self._request
+            self.request = ratelimit.limits(calls=RATE_LIMIT, period=RATE_PERIOD)(
+                self.request
             )
 
             # Apply sleep_and_retry if rate_limit_sleep is enabled
             if rate_limit_sleep:
-                self._request = ratelimit.sleep_and_retry(self._request)
+                self.request = ratelimit.sleep_and_retry(self.request)
 
     def _set_tokens(self):
         """Set the refresh and access tokens"""
@@ -98,11 +98,21 @@ class SquareletClient:
     def _refresh_tokens(self, refresh_token):
         """Refresh the access and refresh tokens"""
         response = self.requests_retry_session().post(
-            f"{self.auth_uri}/refresh/", json={"refresh": refresh_token}
+            f"{self.auth_uri}refresh/",
+            json={"refresh": refresh_token},
+            timeout=self.timeout,
         )
-        return response["access"], response["refresh"]
 
-    def _request(self, method, url, raise_error=True, **kwargs):
+        if response.status_code == 401:
+            # refresh token is expired
+            return self._get_tokens(self.username, self.password)
+
+        self.raise_for_status(response)
+
+        json = response.json()
+        return (json["access"], json["refresh"])
+
+    def request(self, method, url, raise_error=True, **kwargs):
         """Generic method to make API requests"""
         # pylint: disable=method-hidden
         logger.info("request: %s - %s - %s", method, url, kwargs)
@@ -128,7 +138,7 @@ class SquareletClient:
         if response.status_code in [403, 429] and set_tokens:
             self._set_tokens()  # Refresh tokens
             kwargs["set_tokens"] = False  # Prevent infinite loop
-            return self._request(
+            return self.request(
                 method, url, full_url=True, **kwargs
             )  # Retry the request
 
@@ -166,7 +176,7 @@ class SquareletClient:
         """Generate methods for each HTTP request type (GET, POST, etc.)"""
         methods = ["get", "post", "put", "delete", "patch", "head", "options"]
         if attr in methods:
-            return partial(self._request, attr)
+            return partial(self.request, attr)
         raise AttributeError(
             f"'{self.__class__.__name__}' object has no attribute '{attr}'"
         )
