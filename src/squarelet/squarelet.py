@@ -46,6 +46,7 @@ class SquareletClient:
         self.session = requests.Session()
         self.access_token = None
         self.refresh_token = None
+        self._user_id = None
         self._set_tokens()
 
         # Apply rate limiting
@@ -69,11 +70,9 @@ class SquareletClient:
             self.access_token, self.refresh_token = self._get_tokens(
                 self.username, self.password
             )
-        elif self.access_token:
-            pass  # Already have access token, do nothing
         else:
-            raise ValueError("No tokens found")
-
+            self.access_token = None
+            self.refresh_token = None
         if self.access_token:
             self.session.headers.update(
                 {"Authorization": f"Bearer {self.access_token}"}
@@ -213,3 +212,12 @@ class SquareletClient:
             if exc.response.status_code == 401:
                 raise CredentialsFailedError(response=exc.response) from exc
             raise APIError(response=exc.response) from exc
+
+    @property
+    def user_id(self):
+        """Returns the user ID of the user"""
+        if self._user_id is None:
+            user_data = self.request("get", "users/me/").json()
+            user_id = user_data["id"]
+            self._user_id = user_id
+        return self._user_id
