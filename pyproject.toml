@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "python-squarelet" 
-version = "0.1.1"
+version = "0.2.0"
 authors = [
   { name="duckduckgrayduck", email="sanjin@muckrock.com" },
 ]
 description = "Python library that handles token authentication for MuckRock and DocumentCloud"
 readme = "README.md"
-requires-python = ">=3.7,<=3.12"
+requires-python = ">=3.8,<=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

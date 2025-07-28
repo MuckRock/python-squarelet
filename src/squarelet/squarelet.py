@@ -153,10 +153,6 @@ class SquareletClient:
             "headers": kwargs.get("headers", {}),
         }
 
-        # If the base_uri matches a specific service, add the versioning parameter
-        if self.base_uri == "https://api.www.documentcloud.org/api/":
-            custom_kwargs["params"]["version"] = "2.0"
-
         # Allow users to add custom params or headers by passing additional kwargs
         # Merge user-provided arguments with the defaults in custom_kwargs
         if "params" in kwargs:
