@@ -47,6 +47,9 @@ class SquareletClient:
         self.access_token = None
         self.refresh_token = None
         self._user_id = None
+        # Default UA for unauthenticated requests. 
+        existing_ua = self.session.headers.get("User-Agent", "")
+        self.session.headers.update({"User-Agent": f"{existing_ua} Anonymous User".strip()})
         self._set_tokens()
 
         # Apply rate limiting
@@ -59,6 +62,7 @@ class SquareletClient:
             # Apply sleep_and_retry if rate_limit_sleep is enabled
             if rate_limit_sleep:
                 self.request = ratelimit.sleep_and_retry(self.request)
+
 
     def _set_tokens(self):
         """Set the refresh and access tokens"""
@@ -77,6 +81,11 @@ class SquareletClient:
             self.session.headers.update(
                 {"Authorization": f"Bearer {self.access_token}"}
             )
+            # Identify authed users to better manage API usage.
+            if self.username:
+                existing_ua = self.session.headers.get("User-Agent", "")
+                new_ua = existing_ua.replace("Anonymous", self.username).strip()
+                self.session.headers.update({"User-Agent": new_ua})
 
     def _get_tokens(self, username, password):
         """Get an access and refresh token in exchange for the username and password"""
@@ -86,7 +95,7 @@ class SquareletClient:
             timeout=self.timeout,
         )
 
-        if response.status_code == "401":
+        if response.status_code == 401:
             raise CredentialsFailedError("The username and password are incorrect")
 
         self.raise_for_status(response)
@@ -103,8 +112,12 @@ class SquareletClient:
         )
 
         if response.status_code == 401:
-            # refresh token is expired
+            if not self.username or not self.password:
+                raise CredentialsFailedError(
+                    "Refresh token expired and no credentials available to re-authenticate"
+                )
             return self._get_tokens(self.username, self.password)
+
 
         self.raise_for_status(response)
 
@@ -115,12 +128,6 @@ class SquareletClient:
         """Generic method to make API requests"""
         # pylint: disable=method-hidden
         logger.info("request: %s - %s - %s", method, url, kwargs)
-
-        # Add custom headers or other kwargs using the set_request_kwargs method
-        custom_kwargs = self.set_request_kwargs(**kwargs)
-
-        # Merge custom kwargs (headers, etc.) with the default kwargs
-        kwargs.update(custom_kwargs)
 
         # Track if we should set tokens in case of 403/429 response
         set_tokens = kwargs.pop("set_tokens", True)
@@ -145,27 +152,6 @@ class SquareletClient:
             self.raise_for_status(response)
 
         return response
-
-    def set_request_kwargs(self, **kwargs):
-        """Allow clients to customize request kwargs (e.g., adding headers or versioning)"""
-        custom_kwargs = {
-            "params": kwargs.get("params", {}),
-            "headers": kwargs.get("headers", {}),
-        }
-
-        # Allow users to add custom params or headers by passing additional kwargs
-        # Merge user-provided arguments with the defaults in custom_kwargs
-        if "params" in kwargs:
-            custom_kwargs["params"].update(
-                kwargs["params"]
-            )  # Merge user-specified params
-
-        if "headers" in kwargs:
-            custom_kwargs["headers"].update(
-                kwargs["headers"]
-            )  # Add user-specified headers
-
-        return custom_kwargs
 
     def __getattr__(self, attr):
         """Generate methods for each HTTP request type (GET, POST, etc.)"""
