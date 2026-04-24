@@ -134,3 +134,15 @@ def test_user_agent_authenticated(squarelet_client):
     sq_user = os.environ.get("SQ_USER")
     assert sq_user in ua
     assert "Anonymous" not in ua
+
+def test_no_credentials_no_tokens():
+    """Test that a client without credentials has no tokens set"""
+    client = SquareletClient(base_uri="https://api.www.documentcloud.org/api/")
+    assert client.access_token is None
+    assert client.refresh_token is None
+
+def test_user_id_cached(squarelet_client):
+    """Test that user_id is fetched once and cached"""
+    first = squarelet_client.user_id
+    squarelet_client.session = None  # Would blow up if a request was made
+    assert squarelet_client.user_id == first

@@ -34,3 +34,9 @@ Generally, it is safer to access your username as local environment variables us
 username = os.environ["SQ_USERNAME"]
 password = os.environ["SQ_PASSWORD"]
 ```
+
+## Running tests
+You can run tests from the project root by running:
+```bash 
+$ pytest src/squarelet/tests.py
+```
