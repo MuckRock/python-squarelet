@@ -1,4 +1,4 @@
-""" python-squarelet handles authentication and requests to MuckRock services """
+"""python-squarelet handles authentication and requests to MuckRock services"""
 
 # Standard Library
 import logging
@@ -47,9 +47,9 @@ class SquareletClient:
         self.access_token = None
         self.refresh_token = None
         self._user_id = None
-        # Default UA for unauthenticated requests. 
+        # Default UA for unauthenticated requests.
         existing_ua = self.session.headers.get("User-Agent", "")
-        self.session.headers.update({"User-Agent": f"{existing_ua} Anonymous User".strip()})
+        self.session.headers.update({"User-Agent": f"{existing_ua} Anonymous".strip()})
         self._set_tokens()
 
         # Apply rate limiting
@@ -62,7 +62,6 @@ class SquareletClient:
             # Apply sleep_and_retry if rate_limit_sleep is enabled
             if rate_limit_sleep:
                 self.request = ratelimit.sleep_and_retry(self.request)
-
 
     def _set_tokens(self):
         """Set the refresh and access tokens"""
@@ -117,7 +116,6 @@ class SquareletClient:
                     "Refresh token expired and no credentials available to re-authenticate"
                 )
             return self._get_tokens(self.username, self.password)
-
 
         self.raise_for_status(response)
 
