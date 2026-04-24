@@ -1,11 +1,14 @@
-""" Tests for python-squarelet """
+"""Tests for python-squarelet"""
 
 import os
+import time
+
 import pytest
+
 from squarelet import CredentialsFailedError, DoesNotExistError, SquareletClient
 
 
-# pylint:disable=redefined-outer-name
+# pylint:disable=redefined-outer-name, protected-access
 @pytest.fixture
 def squarelet_client():
     """Fixture to mock a SquareletClient instance."""
@@ -13,6 +16,18 @@ def squarelet_client():
     sq_password = os.environ.get("SQ_PASSWORD")
     return SquareletClient(
         base_uri="https://api.www.documentcloud.org/api/",
+        username=sq_user,
+        password=sq_password,
+    )
+
+
+@pytest.fixture
+def muckrock_client():
+    """Fixture to mock a squarelet client for muckrock api"""
+    sq_user = os.environ.get("SQ_USER")
+    sq_password = os.environ.get("SQ_PASSWORD")
+    return SquareletClient(
+        base_uri="https://www.muckrock.com/api_v2/",
         username=sq_user,
         password=sq_password,
     )
@@ -48,5 +63,74 @@ def test_access_documentcloud(squarelet_client):
     assert user_data["username"] == sq_user
 
 
-## TO DO def test_access_muckrock():
-## TO DO def test_rate_limit(squarelet_client):
+def test_access_muckrock(muckrock_client):
+    """Test that we can access the MuckRock endpoint"""
+    sq_user = os.environ.get("SQ_USER")
+    my_user = muckrock_client.request("get", "users/me")
+    user_data = my_user.json()
+    assert user_data["username"] == sq_user
+
+
+def test_rate_limit(squarelet_client):
+    """Test that rate limiting is enforced and requests don't exceed the allowed rate"""
+
+    rate_limit = 10
+    rate_period = 1
+
+    start = time.time()
+
+    # Make more requests than the rate limit allows in one period
+    for _ in range(rate_limit + 1):
+        squarelet_client.request("get", "users/me/")
+
+    elapsed = time.time() - start
+
+    # If rate limiting is working, the 11th request should have been delayed
+    # until the next period, so total time should be >= 1 second
+    assert elapsed >= rate_period, (
+        f"Rate limit not enforced: {rate_limit+ 1} requests completed in {elapsed:.2f}s, "
+        f"expected at least {rate_period}s"
+    )
+
+
+def test_refresh_tokens(squarelet_client):
+    """Test that tokens can be refreshed using a valid refresh token"""
+    original_access = squarelet_client.access_token
+    new_access, new_refresh = squarelet_client._refresh_tokens(
+        squarelet_client.refresh_token
+    )
+    assert new_access is not None
+    assert new_refresh is not None
+    # New access token should differ from the original
+    assert new_access != original_access
+
+
+def test_refresh_tokens_invalid_no_credentials():
+    """
+    Test that an invalid refresh token raises CredentialsFailedError
+    when no credentials are available to fall back on
+    """
+    no_cred_client = SquareletClient(base_uri="https://api.www.documentcloud.org/api/")
+    with pytest.raises(CredentialsFailedError):
+        no_cred_client._refresh_tokens("invalid_refresh_token")
+
+
+def test_refresh_tokens_invalid_falls_back_to_credentials(squarelet_client):
+    """Test that an expired/invalid refresh token falls back to credentials to get new tokens"""
+    new_access, new_refresh = squarelet_client._refresh_tokens("invalid_refresh_token")
+    assert new_access is not None
+    assert new_refresh is not None
+
+
+def test_user_agent_anonymous():
+    """Unauthenticated client should have 'Anonymous' in User-Agent"""
+    client = SquareletClient(base_uri="https://api.www.documentcloud.org/api/")
+    assert "Anonymous" in client.session.headers["User-Agent"]
+
+
+def test_user_agent_authenticated(squarelet_client):
+    """Authenticated client should have username in User-Agent, not 'Anonymous'"""
+    ua = squarelet_client.session.headers["User-Agent"]
+    sq_user = os.environ.get("SQ_USER")
+    assert sq_user in ua
+    assert "Anonymous" not in ua
