@@ -2,7 +2,6 @@
 
 import os
 import time
-
 import pytest
 
 from squarelet import CredentialsFailedError, DoesNotExistError, SquareletClient
@@ -135,14 +134,88 @@ def test_user_agent_authenticated(squarelet_client):
     assert sq_user in ua
     assert "Anonymous" not in ua
 
+
 def test_no_credentials_no_tokens():
     """Test that a client without credentials has no tokens set"""
     client = SquareletClient(base_uri="https://api.www.documentcloud.org/api/")
     assert client.access_token is None
     assert client.refresh_token is None
 
-def test_user_id_cached(squarelet_client):
-    """Test that user_id is fetched once and cached"""
+
+def test_user_id_fetched_only_once(squarelet_client):
+    """user_id should hit the API at most once, then serve from cache."""
+    # Start from a clean slate so we're testing the fetch-and-cache path,
+    # not a value that construction may have already populated.
+    squarelet_client._user_id = None
+
+    # Count how many times the API is actually hit.
+    call_count = {"n": 0}
+    real_fetch_me = squarelet_client._fetch_me
+
+    def counting_fetch_me():
+        call_count["n"] += 1
+        return real_fetch_me()
+
+    squarelet_client._fetch_me = counting_fetch_me
+
+    # Read the property several times.
     first = squarelet_client.user_id
-    squarelet_client.session = None  # Would blow up if a request was made
-    assert squarelet_client.user_id == first
+    second = squarelet_client.user_id
+    third = squarelet_client.user_id
+
+    # Same value every time, and the API was hit exactly once.
+    assert first == second == third
+    assert call_count["n"] == 1
+
+
+def test_user_agent_token_reuse_client(squarelet_client):
+    """A client authed via token reuse (no local username) should still be
+    labeled with the username, not 'Anonymous'.
+
+    Regression: previously such clients stayed '... Anonymous' because the UA
+    relabel was gated on self.username being set. Mirrors the integration
+    pattern of reusing a refresh token on a freshly constructed client.
+    """
+    sq_user = os.environ.get("SQ_USER")
+
+    # A fresh client with no credentials starts as Anonymous.
+    rebuilt = SquareletClient(base_uri="https://api.www.documentcloud.org/api/")
+    assert "Anonymous" in rebuilt.session.headers["User-Agent"]
+
+    # Reuse a valid refresh token from the authenticated fixture, then re-auth.
+    rebuilt.refresh_token = squarelet_client.refresh_token
+    rebuilt._set_tokens()
+
+    ua = rebuilt.session.headers["User-Agent"]
+    assert "Anonymous" not in ua
+    assert sq_user in ua
+    # And it is genuinely authenticated.
+    assert rebuilt.session.headers.get("Authorization", "").startswith("Bearer ")
+
+
+def test_user_agent_stable_across_reauth(squarelet_client):
+    """Repeated token refreshes must not corrupt or duplicate the UA label."""
+    sq_user = os.environ.get("SQ_USER")
+    ua_before = squarelet_client.session.headers["User-Agent"]
+    squarelet_client._set_tokens()
+    squarelet_client._set_tokens()
+    ua_after = squarelet_client.session.headers["User-Agent"]
+    assert ua_before == ua_after
+    assert ua_after.count(sq_user) == 1
+
+
+def test_credentialed_client_does_not_call_api_for_label(squarelet_client):
+    """A client with a local username must label from it, not via users/me/."""
+    sq_user = os.environ.get("SQ_USER")
+    calls = 0
+    real = squarelet_client._fetch_me
+
+    def counting():
+        nonlocal calls
+        calls += 1
+        return real()
+
+    squarelet_client._fetch_me = counting
+    squarelet_client._set_tokens()  # re-auth with creds present
+    assert sq_user in squarelet_client.session.headers["User-Agent"]
+    assert calls == 0

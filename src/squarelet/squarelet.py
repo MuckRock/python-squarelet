@@ -47,9 +47,13 @@ class SquareletClient:
         self.access_token = None
         self.refresh_token = None
         self._user_id = None
-        # Default UA for unauthenticated requests.
-        existing_ua = self.session.headers.get("User-Agent", "")
-        self.session.headers.update({"User-Agent": f"{existing_ua} Anonymous".strip()})
+        self._username_cache = None
+        self._resolving_identity = False
+
+        # Capture the library default UA once, before appending any identity,
+        # so the identity segment can be rebuilt deterministically later.
+        self._base_ua = self.session.headers.get("User-Agent", "")
+        self._set_user_agent()
         self._set_tokens()
 
         # Apply rate limiting
@@ -62,6 +66,46 @@ class SquareletClient:
             # Apply sleep_and_retry if rate_limit_sleep is enabled
             if rate_limit_sleep:
                 self.request = ratelimit.sleep_and_retry(self.request)
+
+    def _fetch_me(self):
+        """Fetch the current user record from the API (used for identity/UA)."""
+        # set_tokens=False so a 403/429 here can't re-enter _set_tokens and loop.
+        return self.request("get", "users/me/", set_tokens=False).json()
+
+    def _resolve_identity(self):
+        """Label for the UA: local username, cached value, else resolve from API.
+
+        Token-authed clients (constructed without a username) have no local
+        identity, so the only source of truth is the token itself. We ask the
+        API who it belongs to and cache the result.
+        """
+        if self.username:
+            return self.username
+        if self._username_cache is not None:
+            return self._username_cache
+        # Only hit the API if we're authenticated and not already resolving.
+        if not self.access_token or self._resolving_identity:
+            return None
+        self._resolving_identity = True
+        try:
+            data = self._fetch_me()
+            # Cache the user id too, so the user_id property doesn't re-fetch.
+            if self._user_id is None and data.get("id") is not None:
+                self._user_id = data["id"]
+            self._username_cache = data.get("username") or str(data.get("id"))
+            return self._username_cache
+        except Exception:  # pylint: disable=broad-except
+            # UA labeling is cosmetic and must never break a real request.
+            return None
+        finally:
+            self._resolving_identity = False
+
+    def _set_user_agent(self):
+        """Rebuild the User-Agent from the captured base plus current identity."""
+        identity = self._resolve_identity() or "Anonymous"
+        self.session.headers.update(
+            {"User-Agent": f"{self._base_ua} {identity}".strip()}
+        )
 
     def _set_tokens(self):
         """Set the refresh and access tokens"""
@@ -76,15 +120,16 @@ class SquareletClient:
         else:
             self.access_token = None
             self.refresh_token = None
+
         if self.access_token:
             self.session.headers.update(
                 {"Authorization": f"Bearer {self.access_token}"}
             )
-            # Identify authed users to better manage API usage.
-            if self.username:
-                existing_ua = self.session.headers.get("User-Agent", "")
-                new_ua = existing_ua.replace("Anonymous", self.username).strip()
-                self.session.headers.update({"User-Agent": new_ua})
+
+        # Rebuild the UA whenever auth state changes. This works for
+        # username/password clients AND token/refresh clients, since it can
+        # resolve identity from the API when no local username is available.
+        self._set_user_agent()
 
     def _get_tokens(self, username, password):
         """Get an access and refresh token in exchange for the username and password"""
@@ -197,7 +242,6 @@ class SquareletClient:
     def user_id(self):
         """Returns the user ID of the user"""
         if self._user_id is None:
-            user_data = self.request("get", "users/me/").json()
-            user_id = user_data["id"]
-            self._user_id = user_id
+            user_data = self._fetch_me()
+            self._user_id = user_data["id"]
         return self._user_id
