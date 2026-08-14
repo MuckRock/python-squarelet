@@ -127,7 +127,7 @@ class SquareletClient:
         # pylint: disable=method-hidden
         logger.info("request: %s - %s - %s", method, url, kwargs)
 
-        # Track if we should set tokens in case of 403/429 response
+        # Track if we should set tokens in case of 401/403 response
         set_tokens = kwargs.pop("set_tokens", True)
         full_url = kwargs.pop("full_url", False)
 
@@ -139,7 +139,7 @@ class SquareletClient:
         )
         logger.debug("response: %s - %s", response.status_code, response.content)
 
-        if response.status_code in [403, 429] and set_tokens:
+        if response.status_code in [401, 403] and set_tokens:
             self._set_tokens()  # Refresh tokens
             kwargs["set_tokens"] = False  # Prevent infinite loop
             return self.request(
