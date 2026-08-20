@@ -1,5 +1,7 @@
 """Tests for python-squarelet"""
 
+import base64
+import json
 import os
 import time
 
@@ -7,6 +9,22 @@ import pytest
 
 from squarelet import CredentialsFailedError, DoesNotExistError, SquareletClient
 
+
+def _make_expired_token():
+    """Build a syntactically valid JWT whose exp is in the past.
+
+    Only the payload segment needs to be real base64url JSON with an `exp`
+    claim, since _token_expiring only decodes the payload. The signature is
+    never verified client-side, so a placeholder is fine.
+    """
+
+    def _b64(obj):
+        raw = json.dumps(obj).encode()
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+    header = _b64({"alg": "RS256", "typ": "JWT"})
+    payload = _b64({"exp": int(time.time()) - 60, "token_type": "access"})
+    return f"{header}.{payload}.signature"
 
 # pylint:disable=redefined-outer-name, protected-access
 @pytest.fixture
@@ -50,7 +68,7 @@ def test_raises_for_status(squarelet_client):
     """Assert that other errors are raised"""
     with pytest.raises(DoesNotExistError) as excinfo:
         # This should raise the DoesNotExistError since the status code will be 404
-        squarelet_client.request("get", "blank")
+        squarelet_client.request("get", "documents/0/")
     assert excinfo.value.response.status_code == 404
 
 
@@ -146,3 +164,42 @@ def test_user_id_cached(squarelet_client):
     first = squarelet_client.user_id
     squarelet_client.session = None  # Would blow up if a request was made
     assert squarelet_client.user_id == first
+
+def test_token_expiring_detects_expired():
+    """_token_expiring returns True for a missing or expired token, and
+    False for an unparseable (non-JWT) token so we fall back to reactive auth."""
+    client = SquareletClient(base_uri="https://api.www.documentcloud.org/api/")
+    # No token at all -> expiring
+    assert client._token_expiring() is True
+    # Expired JWT -> expiring
+    client.access_token = _make_expired_token()
+    assert client._token_expiring() is True
+    # Unparseable token -> not treated as expiring; let the server decide
+    client.access_token = "not-a-jwt"
+    assert client._token_expiring() is False
+
+
+def test_proactive_refresh_before_expired_request(squarelet_client):
+    """An expired access token should be refreshed proactively, before the
+    request is sent, so we never send a known-expired token (which DocumentCloud
+    would treat as anonymous and could hit the anonymous 429 quota)."""
+    # Force an expired token onto the session while keeping a valid refresh
+    # token, mimicking a client that has been idle past the 5-min token TTL.
+    expired = _make_expired_token()
+    squarelet_client.access_token = expired
+    squarelet_client.session.headers.update({"Authorization": f"Bearer {expired}"})
+
+    # _token_expiring must recognize the expired token
+    assert squarelet_client._token_expiring() is True
+
+    # The request should succeed because request() refreshes proactively
+    resp = squarelet_client.request("get", "users/me/")
+    assert resp.status_code == 200
+
+    # The token must have been swapped out for a fresh, non-expired one
+    assert squarelet_client.access_token != expired
+    assert squarelet_client._token_expiring() is False
+    # And the session header must carry the new token, not the expired one
+    assert squarelet_client.session.headers["Authorization"] == (
+        f"Bearer {squarelet_client.access_token}"
+    )

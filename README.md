@@ -4,7 +4,7 @@ A Python wrapper for Squarelet, allowing for authentication with MuckRock system
 ## Features
 - Token-based Authentication: Easily authenticate with MuckRock services using username/password or refresh tokens.
 - Rate Limiting: Automatically applies rate limiting to prevent exceeding API request limits.
-- Automatic Token Refresh: Seamlessly refresh your access tokens when expired without manual intervention.
+- Automatic Token Refresh: Seamlessly refresh your access tokens when expired without manual intervention. It detects that your access token is about to expire before making the request so it eagerly refreshes.
 - Retry Logic: Built-in automatic retries for failed requests, ensuring robust interaction with MuckRock services.
 - API Request Handling: Send GET, POST, PUT, DELETE, and other HTTP requests to MuckRock’s API with an easy-to-use interface.
 - Customizable Request Headers: Extend or modify request parameters (like headers) through flexible client configuration.
