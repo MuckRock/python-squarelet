@@ -26,6 +26,7 @@ def _make_expired_token():
     payload = _b64({"exp": int(time.time()) - 60, "token_type": "access"})
     return f"{header}.{payload}.signature"
 
+
 # pylint:disable=redefined-outer-name, protected-access
 @pytest.fixture
 def squarelet_client():
@@ -153,17 +154,20 @@ def test_user_agent_authenticated(squarelet_client):
     assert sq_user in ua
     assert "Anonymous" not in ua
 
+
 def test_no_credentials_no_tokens():
     """Test that a client without credentials has no tokens set"""
     client = SquareletClient(base_uri="https://api.www.documentcloud.org/api/")
     assert client.access_token is None
     assert client.refresh_token is None
 
+
 def test_user_id_cached(squarelet_client):
     """Test that user_id is fetched once and cached"""
     first = squarelet_client.user_id
     squarelet_client.session = None  # Would blow up if a request was made
     assert squarelet_client.user_id == first
+
 
 def test_token_expiring_detects_expired():
     """_token_expiring returns True for a missing or expired token, and

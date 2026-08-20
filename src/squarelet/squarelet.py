@@ -75,7 +75,7 @@ class SquareletClient:
         which the server treats as anonymous. An anonymous request can then hit
         the anonymous rate quota on DocumentCloud and return a 429 that the
         401/403 auth-recovery branch does not handle. We can't add 429 to that auth
-        recovery branch as there are legitimate rate limits that return a 429 
+        recovery branch as there are legitimate rate limits that return a 429
         that we don't want to call set_tokens on repeatedly.
 
         If the token is not a parseable JWT with an exp claim, returns False and
@@ -182,7 +182,10 @@ class SquareletClient:
         logger.debug("response: %s - %s", response.status_code, response.content)
 
         if response.status_code in [401, 403] and set_tokens:
-            logger.info("request: got %s, calling _set_tokens and retrying", response.status_code)
+            logger.info(
+                "request: got %s, calling _set_tokens and retrying",
+                response.status_code,
+            )
             self._set_tokens()  # Refresh tokens
             kwargs["set_tokens"] = False  # Prevent infinite loop
             return self.request(
